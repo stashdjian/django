@@ -12,7 +12,7 @@ from django.core.exceptions import (ObjectDoesNotExist,
 from django.db.models.fields import AutoField, FieldDoesNotExist
 from django.db.models.fields.related import (ForeignObjectRel, ManyToOneRel,
     OneToOneField, add_lazy_relation)
-from django.db import (router, transaction, DatabaseError,
+from django.db import (connections, router, transaction, DatabaseError,
     DEFAULT_DB_ALIAS)
 from django.db.models.query import Q
 from django.db.models.query_utils import DeferredAttribute, deferred_class_factory
@@ -315,7 +315,8 @@ class ModelState(object):
         self.db = db
         # If true, uniqueness validation checks will consider this a new, as-yet-unsaved object.
         # Necessary for correct validation of new instances of objects with explicit (non-auto) PKs.
-        # This impacts validation only; it has no effect on the actual save.
+        # Also used when connection.features.distinguishes_insert_from_update is false to identify
+        # when an instance has been newly created.
         self.adding = True
 
 
@@ -415,6 +416,7 @@ class Model(six.with_metaclass(ModelBase)):
                     pass
             if kwargs:
                 raise TypeError("'%s' is an invalid keyword argument for this function" % list(kwargs)[0])
+        self._original_pk = self._get_pk_val()
         super(Model, self).__init__()
         signals.post_init.send(sender=self.__class__, instance=self)
 
@@ -575,6 +577,7 @@ class Model(six.with_metaclass(ModelBase)):
         self._state.db = using
         # Once saved, this is no longer a to-be-added instance.
         self._state.adding = False
+        self._original_pk = self._get_pk_val(meta)
 
         # Signal that the save is complete
         if not meta.auto_created:
@@ -624,9 +627,22 @@ class Model(six.with_metaclass(ModelBase)):
         pk_set = pk_val is not None
         if not pk_set and (force_update or update_fields):
             raise ValueError("Cannot force an update in save() with no primary key.")
+
+        # TODO/NONREL: Some backends could emulate force_insert/_update
+        # with an optimistic transaction, but since it's costly we should
+        # only do it when the user explicitly wants it.
+        # By adding support for an optimistic locking transaction
+        # in Django (SQL: SELECT ... FOR UPDATE) we could even make that
+        # part fully reusable on all backends (the current .exists()
+        # check below isn't really safe if you have lots of concurrent
+        # requests. BTW, and neither is QuerySet.get_or_create).
+        connection = connections[using]
+        try_update = connection.features.distinguishes_insert_from_update
+        entity_exists = bool(not self._state.adding and self._original_pk == pk_val)
+
         updated = False
         # If possible, try an UPDATE. If that doesn't update anything, do an INSERT.
-        if pk_set and not force_insert:
+        if try_update and pk_set and not force_insert:
             base_qs = cls._base_manager.using(using)
             values = [(f, None, (getattr(self, f.attname) if raw else f.pre_save(self, False)))
                       for f in non_pks]
@@ -654,6 +670,9 @@ class Model(six.with_metaclass(ModelBase)):
             result = self._do_insert(cls._base_manager, using, fields, update_pk, raw)
             if update_pk:
                 setattr(self, meta.pk.attname, result)
+
+        if not try_update:
+            updated = entity_exists
         return updated
 
     def _do_update(self, base_qs, using, pk_val, values, update_fields, forced_update):
@@ -693,6 +712,9 @@ class Model(six.with_metaclass(ModelBase)):
         collector = Collector(using=using)
         collector.collect([self])
         collector.delete()
+
+        self._state.adding = False
+        self._original_pk = None
 
     delete.alters_data = True
 
