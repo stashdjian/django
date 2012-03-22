@@ -1064,6 +1064,15 @@ class BaseDatabaseOperations(object):
         """
         return value
 
+    def value_to_db_auto(self, value):
+        """
+        Transform an AutoField value to an object compatible with what is expected
+        by the backend driver for automatic keys.
+        """
+        if value is None:
+            return None
+        return int(value)
+
     def value_to_db_date(self, value):
         """
         Transform a date value to an object compatible with what is expected
