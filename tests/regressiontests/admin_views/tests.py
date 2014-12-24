@@ -16,11 +16,12 @@ from django.core.files import temp as tempfile
 from django.core.urlresolvers import reverse
 # Register auth models with the admin.
 from django.contrib import admin
+from django.contrib.admin.exceptions import DisallowedModelAdminToField
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.admin.models import LogEntry, DELETION
 from django.contrib.admin.sites import LOGIN_FORM_KEY
 from django.contrib.admin.util import quote
-from django.contrib.admin.views.main import IS_POPUP_VAR
+from django.contrib.admin.views.main import IS_POPUP_VAR, TO_FIELD_VAR
 from django.contrib.admin.tests import AdminSeleniumWebDriverTestCase
 from django.contrib.auth import REDIRECT_FIELD_NAME
 from django.contrib.auth.models import Group, User, Permission, UNUSABLE_PASSWORD
@@ -555,6 +556,37 @@ class AdminViewBasicTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'employee__person_ptr__exact')
         response = self.client.get("/test_admin/admin/admin_views/workhour/?employee__person_ptr__exact=%d" % e1.pk)
+        self.assertEqual(response.status_code, 200)
+
+    def test_disallowed_to_field(self):
+        with self.assertRaises(DisallowedModelAdminToField):
+            response = self.client.get("/test_admin/admin/admin_views/section/", {TO_FIELD_VAR: 'missing_field'})
+
+        # Specifying a field that is not refered by any other model registered
+        # to this admin site should raise an exception.
+        with self.assertRaises(DisallowedModelAdminToField):
+            response = self.client.get("/test_admin/admin/admin_views/section/", {TO_FIELD_VAR: 'name'})
+
+        # Specifying a field referenced by another model should be allowed.
+        response = self.client.get("/test_admin/admin/admin_views/section/", {TO_FIELD_VAR: 'id'})
+        self.assertEqual(response.status_code, 200)
+
+        # Specifying a field referenced by another model though a m2m should be allowed.
+        response = self.client.get("/test_admin/admin/admin_views/m2mreference/", {TO_FIELD_VAR: 'id'})
+        self.assertEqual(response.status_code, 200)
+
+        # #23604 - Specifying the pk of this model should be allowed when this model defines a m2m relationship
+        response = self.client.get("/test_admin/admin/admin_views/ingredient/", {TO_FIELD_VAR: 'id'})
+        self.assertEqual(response.status_code, 200)
+
+        # #23329 - Specifying a field that is not refered by any other model directly registered
+        # to this admin site but registered through inheritance should be allowed.
+        response = self.client.get("/test_admin/admin/admin_views/referencedbyparent/", {TO_FIELD_VAR: 'id'})
+        self.assertEqual(response.status_code, 200)
+
+        # #23431 - Specifying a field that is only refered to by a inline of a registered
+        # model should be allowed.
+        response = self.client.get("/test_admin/admin/admin_views/referencedbyinline/", {TO_FIELD_VAR: 'id'})
         self.assertEqual(response.status_code, 200)
 
     def test_allowed_filtering_15103(self):
@@ -2138,10 +2170,9 @@ class AdminSearchTest(TestCase):
         """Ensure that the to_field GET parameter is preserved when a search
         is performed. Refs #10918.
         """
-        from django.contrib.admin.views.main import TO_FIELD_VAR
-        response = self.client.get('/test_admin/admin/auth/user/?q=joe&%s=username' % TO_FIELD_VAR)
+        response = self.client.get('/test_admin/admin/auth/user/?q=joe&%s=id' % TO_FIELD_VAR)
         self.assertContains(response, "\n1 user\n")
-        self.assertContains(response, '<input type="hidden" name="t" value="username"/>', html=True)
+        self.assertContains(response, '<input type="hidden" name="%s" value="id"/>' % TO_FIELD_VAR, html=True)
 
     def test_exact_matches(self):
         response = self.client.get('/test_admin/admin/admin_views/recommendation/?q=bar')
