@@ -60,6 +60,7 @@ answer newbie questions, and generally made Django that much better:
     Mathieu Agopian <mathieu.agopian@gmail.com>
     Roberto Aguilar <roberto@baremetal.io>
     ajs <adi@sieker.info>
+    Akis Kesoglou <akiskesoglou@gmail.com>
     alang@bright-green.com
     A S Alam <aalam@users.sf.net>
     Andi Albrecht <albrecht.andi@gmail.com>
@@ -396,6 +397,7 @@ answer newbie questions, and generally made Django that much better:
     Javier Mansilla <javimansilla@gmail.com>
     masonsimon+django@gmail.com
     Manuzhai
+    Moayad Mardini <moayad.m@gmail.com>
     Petr Marhoun <petr.marhoun@gmail.com>
     Petar Marić <http://www.petarmaric.com/>
     Nuno Mariz <nmariz@gmail.com>
@@ -658,7 +660,7 @@ A big THANK YOU goes to:
 
     Ian Bicking for convincing Adrian to ditch code generation.
 
-    Mark Pilgrim for "Dive Into Python" (http://diveintopython.net,
+    Mark Pilgrim for "Dive Into Python" (http://www.diveintopython.net,
     http://www.diveintopython3.net).
 
     Guido van Rossum for creating Python.
