@@ -44,6 +44,7 @@ class MigrationRecorder(object):
         """
         Ensures the table exists and has the correct schema.
         """
+        return
         # If the table's there, that's fine - we've never changed its schema
         # in the codebase.
         if self.Migration._meta.db_table in self.connection.introspection.get_table_list(self.connection.cursor()):
